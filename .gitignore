@@ -23,6 +23,8 @@ backend/.venv/
 # Flutter-generated files
 **/build/
 **/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
 
 # IDE and package-manager artifacts
 **/.gradle/
