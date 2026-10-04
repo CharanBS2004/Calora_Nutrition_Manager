@@ -1,0 +1,34 @@
+try {
+    org.gradle.api.artifacts.dsl.RepositoryHandler.metaClass.jcenter = { ->
+        delegate.mavenCentral()
+    }
+    Class.forName("org.gradle.api.internal.artifacts.dsl.DefaultRepositoryHandler").metaClass.jcenter = { ->
+        delegate.mavenCentral()
+    }
+} catch (Throwable ignored) {}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.buildDir = '../build'
+subprojects {
+    project.buildDir = "${rootProject.buildDir}/${project.name}"
+}
+subprojects {
+    project.evaluationDependsOn(':app')
+}
+subprojects {
+    project.plugins.withId('com.android.library') {
+        project.androidComponents.finalizeDsl { androidDsl ->
+            androidDsl.compileSdk = 36
+        }
+    }
+}
+
+tasks.register("clean", Delete) {
+    delete rootProject.buildDir
+}

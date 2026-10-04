@@ -1,0 +1,31 @@
+from app.models.entities import (
+    User,
+    UserProfile,
+    NutritionGoal,
+    Food,
+    FoodUnitConversion,
+    Recipe,
+    RecipeIngredient,
+    Meal,
+    MealItem,
+    HealthRecord,
+    UserMemory,
+    ChatMessage,
+    NotificationSetting,
+)
+
+__all__ = [
+    "User",
+    "UserProfile",
+    "NutritionGoal",
+    "Food",
+    "FoodUnitConversion",
+    "Recipe",
+    "RecipeIngredient",
+    "Meal",
+    "MealItem",
+    "HealthRecord",
+    "UserMemory",
+    "ChatMessage",
+    "NotificationSetting",
+]
