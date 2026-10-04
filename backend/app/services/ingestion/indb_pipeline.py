@@ -121,9 +121,26 @@ class INDBIngestionPipeline:
 
         logger.info("Starting INDB dataset ingestion...")
         counts = {"indb_recipes": 0, "uk_fct": 0, "us_fct": 0, "icmr_nin": 0, "conversions": 0}
+        existing_food_keys = {
+            self._food_key(source, food_code, food_name)
+            for source, food_code, food_name in db.query(
+                Food.source, Food.food_code, Food.food_name
+            ).all()
+        }
+        existing_conversion_keys = {
+            self._conversion_key(pattern, unit, source)
+            for pattern, unit, source in db.query(
+                FoodUnitConversion.food_name_pattern,
+                FoodUnitConversion.unit_name,
+                FoodUnitConversion.source,
+            ).all()
+        }
 
         # 1. Ingest ICMR-NIN Staples
         for code, data in ICMR_NIN_STAPLES.items():
+            key = self._food_key("ICMR_NIN_2017", code, data["name"])
+            if key in existing_food_keys:
+                continue
             food = Food(
                 food_code=code,
                 food_name=data["name"],
@@ -140,6 +157,7 @@ class INDBIngestionPipeline:
                 is_custom=False
             )
             db.add(food)
+            existing_food_keys.add(key)
             counts["icmr_nin"] += 1
 
         db.flush()
@@ -163,6 +181,9 @@ class INDBIngestionPipeline:
                 fat = self._to_float(r[9])
                 fib = self._to_float(r[11])
 
+                key = self._food_key("UK_FCT", code, name)
+                if key in existing_food_keys:
+                    continue
                 food = Food(
                     food_code=code,
                     food_name=name,
@@ -179,6 +200,7 @@ class INDBIngestionPipeline:
                     is_custom=False
                 )
                 db.add(food)
+                existing_food_keys.add(key)
                 counts["uk_fct"] += 1
             db.flush()
 
@@ -201,6 +223,9 @@ class INDBIngestionPipeline:
                 fat = self._to_float(r[9])
                 fib = self._to_float(r[11])
 
+                key = self._food_key("US_FCT", code, name)
+                if key in existing_food_keys:
+                    continue
                 food = Food(
                     food_code=code,
                     food_name=name,
@@ -217,6 +242,7 @@ class INDBIngestionPipeline:
                     is_custom=False
                 )
                 db.add(food)
+                existing_food_keys.add(key)
                 counts["us_fct"] += 1
             db.flush()
 
@@ -252,6 +278,9 @@ class INDBIngestionPipeline:
                 if serv_kcal and kcal_100g > 0:
                     serving_weight_g = round((serv_kcal / kcal_100g) * 100.0, 1)
 
+                key = self._food_key("INDB", code, name)
+                if key in existing_food_keys:
+                    continue
                 food = Food(
                     food_code=code,
                     food_name=name,
@@ -273,6 +302,7 @@ class INDBIngestionPipeline:
                     is_custom=False
                 )
                 db.add(food)
+                existing_food_keys.add(key)
                 counts["indb_recipes"] += 1
 
             db.flush()
@@ -295,6 +325,9 @@ class INDBIngestionPipeline:
                 # parse grams
                 grams = self._extract_grams_val(equiv_str or unit_str)
                 if grams:
+                    key = self._conversion_key(current_food, unit_str, "Units.xlsx")
+                    if key in existing_conversion_keys:
+                        continue
                     conv = FoodUnitConversion(
                         food_name_pattern=current_food,
                         unit_name=unit_str,
@@ -303,6 +336,7 @@ class INDBIngestionPipeline:
                         is_density_based=True
                     )
                     db.add(conv)
+                    existing_conversion_keys.add(key)
                     counts["conversions"] += 1
 
             db.flush()
@@ -311,6 +345,23 @@ class INDBIngestionPipeline:
         total_foods = counts["icmr_nin"] + counts["uk_fct"] + counts["us_fct"] + counts["indb_recipes"]
         logger.info(f"Ingestion completed: {total_foods} foods and {counts['conversions']} conversions loaded.")
         return {"foods_loaded": total_foods, "conversions_loaded": counts["conversions"], "details": counts}
+
+    @staticmethod
+    def _food_key(source: str, food_code: Optional[str], food_name: str) -> tuple[str, str]:
+        code_or_name = str(food_code or "").strip() or food_name.strip().casefold()
+        return source, code_or_name
+
+    @staticmethod
+    def _conversion_key(
+        food_name_pattern: Optional[str],
+        unit_name: Optional[str],
+        source: Optional[str],
+    ) -> tuple[str, str, str]:
+        return (
+            (food_name_pattern or "").strip().casefold(),
+            (unit_name or "").strip().casefold(),
+            (source or "").strip().casefold(),
+        )
 
     @staticmethod
     def _to_float(val: Any) -> float:

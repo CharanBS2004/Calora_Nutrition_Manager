@@ -76,6 +76,46 @@ def _ingredient_labels_match(reference: str, food_name: str) -> bool:
     )
 
 
+def _equivalent_food_key(food: Food) -> tuple:
+    return (
+        food.food_name.strip().casefold(),
+        food.serving_size,
+        food.serving_unit.strip().casefold(),
+        food.weight_g,
+        food.energy_kcal,
+        food.protein_g,
+        food.carbohydrate_g,
+        food.fat_g,
+        food.fiber_g,
+        food.unit_serving_energy_kcal,
+        food.unit_serving_protein_g,
+        food.unit_serving_carbohydrate_g,
+        food.unit_serving_fat_g,
+        food.unit_serving_fiber_g,
+        food.micronutrients_json,
+    )
+
+
+def _deduplicate_equivalent_foods(foods: List[Food]) -> List[Food]:
+    source_priority = {
+        "icmr_nin_2017": 0,
+        "indb": 1,
+        "uk_fct": 2,
+        "us_fct": 3,
+    }
+    unique = {}
+    for food in sorted(
+        foods,
+        key=lambda candidate: (
+            source_priority.get((candidate.source or "").casefold(), 4),
+            (candidate.food_code or "").casefold(),
+            candidate.id or 0,
+        ),
+    ):
+        unique.setdefault(_equivalent_food_key(food), food)
+    return list(unique.values())
+
+
 @lru_cache(maxsize=4)
 def _recipe_ingredient_references(dataset_dir: str) -> dict:
     path = Path(dataset_dir) / "recipes.xlsx"
@@ -141,6 +181,7 @@ def resolve_recipe_food(
         and any(_ingredient_labels_match(reference, food.food_name) for reference in references)
     ]
     by_code = list({food.id: food for food in by_code}.values())
+    by_code = _deduplicate_equivalent_foods(by_code)
     if len(by_code) == 1:
         return by_code[0]
     if len(by_code) > 1:
@@ -151,11 +192,15 @@ def resolve_recipe_food(
             if any(_ingredient_labels_match(reference, food.food_name) for reference in references)
         ]
         candidates = list({food.id: food for food in candidates}.values())
+    candidates = _deduplicate_equivalent_foods(candidates)
 
     if len(candidates) == 1:
         return candidates[0]
     if candidates:
-        names = ", ".join(sorted(food.food_name for food in candidates))
+        names = ", ".join(
+            f"{food.food_name} [source={food.source}, code={food.food_code or 'n/a'}]"
+            for food in sorted(candidates, key=lambda candidate: candidate.food_name.casefold())
+        )
         raise ValueError(
             f"Could not reliably map '{clean_name}' to one nutrition dataset record. "
             f"Matching records: {names}."

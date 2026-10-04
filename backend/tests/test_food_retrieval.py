@@ -686,6 +686,83 @@ def test_recipe_mapping_reports_multiple_compatible_food_records(db):
         db.rollback()
 
 
+def test_recipe_mapping_collapses_duplicate_records_with_identical_nutrition(db, monkeypatch, tmp_path):
+    import app.services.food_lookup as food_lookup
+
+    original = db.query(Food).filter(
+        Food.food_name == "Onion, big, red (Allium cepa)"
+    ).one()
+    duplicate = Food(
+        food_code="DUPLICATE-ONION",
+        food_name=original.food_name,
+        category=original.category,
+        source="TEST",
+        serving_size=original.serving_size,
+        serving_unit=original.serving_unit,
+        weight_g=original.weight_g,
+        energy_kcal=original.energy_kcal,
+        protein_g=original.protein_g,
+        carbohydrate_g=original.carbohydrate_g,
+        fat_g=original.fat_g,
+        fiber_g=original.fiber_g,
+        is_custom=False,
+    )
+    db.add(duplicate)
+    db.flush()
+    monkeypatch.setattr(food_lookup.settings, "INDB_DATASET_DIR", str(tmp_path / "empty"))
+
+    resolved = resolve_recipe_food(db, "Onion")
+
+    assert resolved.id == original.id
+
+
+def test_recipe_mapping_keeps_same_name_foods_with_different_nutrition_ambiguous(
+    db, monkeypatch, tmp_path
+):
+    import app.services.food_lookup as food_lookup
+
+    original = db.query(Food).filter(Food.food_name == "Paneer").one_or_none()
+    if original is None:
+        original = Food(
+            food_code="TEST-PANEER-BASE",
+            food_name="Paneer",
+            category="Milk and Milk Products",
+            source="TEST",
+            serving_size=100,
+            serving_unit="g",
+            weight_g=100,
+            energy_kcal=250,
+            protein_g=18,
+            carbohydrate_g=3,
+            fat_g=20,
+            fiber_g=0,
+            is_custom=False,
+        )
+        db.add(original)
+        db.flush()
+    duplicate = Food(
+        food_code="TEST-PANEER-DIFFERENT",
+        food_name=original.food_name,
+        category=original.category,
+        source="TEST",
+        serving_size=original.serving_size,
+        serving_unit=original.serving_unit,
+        weight_g=original.weight_g,
+        energy_kcal=original.energy_kcal + 10,
+        protein_g=original.protein_g,
+        carbohydrate_g=original.carbohydrate_g,
+        fat_g=original.fat_g,
+        fiber_g=original.fiber_g,
+        is_custom=False,
+    )
+    db.add(duplicate)
+    db.flush()
+    monkeypatch.setattr(food_lookup.settings, "INDB_DATASET_DIR", str(tmp_path / "empty"))
+
+    with pytest.raises(ValueError, match=r"source=TEST, code=TEST-PANEER"):
+        resolve_recipe_food(db, "Paneer")
+
+
 def test_current_recipe_ingredients_save_with_dataset_food_ids(db):
     user = User(
         email="recipe_mapping_regression@example.com",

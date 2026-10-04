@@ -1,4 +1,5 @@
 from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 from app.core.config import settings
 
@@ -19,14 +20,14 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 
-def ensure_recipe_ingredient_quantity_column() -> None:
+def ensure_recipe_ingredient_quantity_column(target_engine: Engine = engine) -> None:
     """Add the submitted recipe amount without disturbing existing gram records."""
     columns = {
         column["name"]
-        for column in inspect(engine).get_columns("recipe_ingredients")
+        for column in inspect(target_engine).get_columns("recipe_ingredients")
     }
     if "quantity" not in columns:
-        with engine.begin() as connection:
+        with target_engine.begin() as connection:
             connection.execute(
                 text("ALTER TABLE recipe_ingredients ADD COLUMN quantity FLOAT")
             )
